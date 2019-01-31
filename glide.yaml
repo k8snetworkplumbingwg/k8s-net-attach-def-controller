@@ -1,0 +1,24 @@
+package: github.com/K8sNetworkPlumbingWG/network-controller
+import:
+- package: github.com/intel/multus-cni
+  subpackages:
+  - types
+- package: github.com/k8snetworkplumbingwg/network-attachment-definition-client
+  subpackages:
+  - pkg/apis/k8s.cni.cncf.io/v1
+  - pkg/client/clientset/versioned
+  - pkg/client/informers/externalversions
+  - pkg/client/informers/externalversions/k8s.cni.cncf.io/v1
+- package: github.com/pkg/errors
+- package: k8s.io/apimachinery
+  subpackages:
+  - pkg/apis/meta/v1
+  - pkg/labels
+- package: k8s.io/client-go
+  subpackages:
+  - informers
+  - informers/core/v1
+  - kubernetes
+  - listers/core/v1
+  - tools/cache
+  - tools/clientcmd
