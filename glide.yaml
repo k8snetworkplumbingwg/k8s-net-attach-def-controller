@@ -1,4 +1,4 @@
-package: github.com/K8sNetworkPlumbingWG/network-controller
+package: github.com/K8sNetworkPlumbingWG/k8s-net-attach-def-controller
 import:
 - package: github.com/intel/multus-cni
   subpackages:
@@ -10,10 +10,19 @@ import:
   - pkg/client/informers/externalversions
   - pkg/client/informers/externalversions/k8s.cni.cncf.io/v1
 - package: github.com/pkg/errors
+- package: k8s.io/kube-openapi
+  subpackages:
+  - pkg/util/proto
 - package: k8s.io/apimachinery
   subpackages:
   - pkg/apis/meta/v1
   - pkg/labels
+  - pkg/runtime/schema
+- package: k8s.io/klog
+- package: k8s.io/kubernetes
+  subpackages:
+  - pkg/api/v1/pod
+  - pkg/api/v1/endpoints
 - package: k8s.io/client-go
   subpackages:
   - informers
@@ -22,3 +31,5 @@ import:
   - listers/core/v1
   - tools/cache
   - tools/clientcmd
+  - util/workqueue
+  - tools/record

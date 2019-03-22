@@ -1,5 +1,5 @@
-hash: be42470dce4d5aefdc26a167512d73df581f9fad0e6201701b5a57797a70fa80
-updated: 2019-01-31T12:45:40.746540109Z
+hash: 98c9b681dffbf40eada143282ee8215f9676a1bdc3ecbd110460b6f2991e0726
+updated: 2019-03-21T16:29:04.643523894Z
 imports:
 - name: github.com/containernetworking/cni
   version: 07c1a6da47b7fbf8b357f4949ecce2113e598491
@@ -24,6 +24,10 @@ imports:
   - sortkeys
 - name: github.com/golang/glog
   version: 44145f04b68cf362d9c4df2182967c2275eaefed
+- name: github.com/golang/groupcache
+  version: 02826c3e79038b59d737d3b1c0a1d937f71a4433
+  subpackages:
+  - lru
 - name: github.com/golang/protobuf
   version: b4deda0973fb4c70b50d226b1af49f3da59f5265
   subpackages:
@@ -90,13 +94,11 @@ imports:
   version: 1c05540f6879653db88113bc4a2b70aec4bd491f
   subpackages:
   - context
-  - html
-  - html/atom
+  - context/ctxhttp
   - http2
   - http2/hpack
   - idna
   - lex/httplex
-  - websocket
 - name: golang.org/x/sys
   version: 95c6576299259db960f6c5b9b69ea52422860fce
   subpackages:
@@ -138,6 +140,7 @@ imports:
   - core/v1
   - events/v1beta1
   - extensions/v1beta1
+  - imagepolicy/v1alpha1
   - networking/v1
   - policy/v1beta1
   - rbac/v1
@@ -180,15 +183,18 @@ imports:
   - pkg/util/framer
   - pkg/util/intstr
   - pkg/util/json
+  - pkg/util/mergepatch
   - pkg/util/net
   - pkg/util/runtime
   - pkg/util/sets
+  - pkg/util/strategicpatch
   - pkg/util/validation
   - pkg/util/validation/field
   - pkg/util/wait
   - pkg/util/yaml
   - pkg/version
   - pkg/watch
+  - third_party/forked/golang/json
   - third_party/forked/golang/reflect
 - name: k8s.io/client-go
   version: 59698c7d9724b0f95f9dc9e7f7dfdcc3dfeceb82
@@ -306,6 +312,7 @@ imports:
   - tools/clientcmd/api/v1
   - tools/metrics
   - tools/pager
+  - tools/record
   - tools/reference
   - transport
   - util/buffer
@@ -315,4 +322,16 @@ imports:
   - util/homedir
   - util/integer
   - util/retry
+  - util/workqueue
+- name: k8s.io/klog
+  version: 8139d8cb77af419532b33dfa7dd09fbc5f1d344f
+- name: k8s.io/kube-openapi
+  version: 91cfa479c814065e420cee7ed227db0f63a5854e
+  subpackages:
+  - pkg/util/proto
+- name: k8s.io/kubernetes
+  version: 9c60fd5242c4a912b0f57bc6fb7b1d49033d33ac
+  subpackages:
+  - pkg/api/v1/endpoints
+  - pkg/api/v1/pod
 testImports: []
