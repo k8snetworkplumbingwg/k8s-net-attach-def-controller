@@ -1,0 +1,13 @@
+kind: Pod
+apiVersion: v1
+metadata:
+  name: kube-net-attach-def-controller
+  namespace: kube-system
+spec:
+  serviceAccount: kube-net-attach-def-controller
+  containers:
+  - name: kube-net-attach-def-controller
+    image: k8s-net-attach-def-controller:latest
+    imagePullPolicy: IfNotPresent
+    command: [ "/bin/sh", "-c", "--" ]
+    args: [ "k8s-net-attach-def-controller --logtostderr 10;" ]
