@@ -3,10 +3,10 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/pkg/errors"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -19,6 +19,7 @@ import (
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/api/v1/endpoints"
@@ -133,46 +134,75 @@ func (c *NetworkController) worker() {
 }
 
 func (c *NetworkController) processNextWorkItem() bool {
-	key, shouldQuit := c.workqueue.Get()
+	obj, shouldQuit := c.workqueue.Get()
+
 	if shouldQuit {
 		return false
 	}
-	defer c.workqueue.Done(key)
 
-	err := c.sync(key.(string))
+	err := func(obj interface{}) error {
+		defer c.workqueue.Done(obj)
+		var key string
+		var ok bool
+
+		if key, ok = obj.(string); !ok {
+			c.workqueue.Forget(obj)
+			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			return nil
+		}
+
+		if err := c.sync(key); err != nil {
+			c.workqueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		}
+		c.workqueue.Forget(obj)
+		klog.Infof("Successfully synced '%s'", key)
+		return nil
+	}(obj)
+
 	if err != nil {
 		klog.V(4).Infof("sync aborted: %s", err)
+		utilruntime.HandleError(err)
+		return true
 	}
 
 	return true
+
 }
 
 func (c *NetworkController) sync(key string) error {
 	// get service object from the key
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
-		return err
+		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+		return nil
 	}
+
 	svc, err := c.serviceLister.Services(namespace).Get(name)
 	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			utilruntime.HandleError(fmt.Errorf("service '%s' in work queue no longer exists", key))
+			return nil
+		}
 		return err
 	}
 
 	// read network annotations from the service
 	annotations := getNetworkAnnotations(svc)
 	if len(annotations) == 0 {
-		return errors.New("no network annotations")
+		return nil
 	}
-	klog.V(3).Infof("service network annotation found: %v", annotations)
-	networks, err := parsePodNetworkSelections(annotations, namespace)
+	klog.Infof("service network annotation found: %v", annotations)
+	networks, err := parsePodNetworkSelections(annotations, svc.Namespace)
 	if err != nil {
-		return err
+		klog.Errorf("service network annotation parse error: %v", err)
+		return nil
 	}
 	if len(networks) > 1 {
 		msg := fmt.Sprintf("multiple network selections in the service spec are not supported")
 		klog.Warningf(msg)
 		c.recorder.Event(svc, corev1.EventTypeWarning, msg, "Endpoints update aborted")
-		return errors.New(msg)
+		return nil
 	}
 
 	// get pods matching service selector
@@ -180,14 +210,14 @@ func (c *NetworkController) sync(key string) error {
 	pods, err := c.podsLister.List(selector)
 	if err != nil {
 		// no selector or no pods running
-		klog.V(4).Info("error listing pods matching service selector: %s", err)
+		klog.V(4).Infof("error listing pods matching service selector: %s", err)
 		return err
 	}
 
 	// get endpoints of the service
-	ep, err := c.endpointsLister.Endpoints(namespace).Get(name)
+	ep, err := c.endpointsLister.Endpoints(svc.Namespace).Get(svc.Name)
 	if err != nil {
-		klog.V(4).Info("error getting service endpoints: %s", err)
+		klog.V(4).Infof("error getting service endpoints: %s", err)
 		return err
 	}
 
@@ -247,23 +277,32 @@ func (c *NetworkController) sync(key string) error {
 		subsets = append(subsets, subset)
 	}
 
-	ep.SetOwnerReferences(
-		[]metav1.OwnerReference{
-			*metav1.NewControllerRef(svc, schema.GroupVersionKind{
-				Group:   corev1.SchemeGroupVersion.Group,
-				Version: corev1.SchemeGroupVersion.Version,
-				Kind:    "Service",
-			}),
-		},
-	)
-
-	// repack subsets - NOTE: too naive? additional checks needed?
-	ep.Subsets = endpoints.RepackSubsets(subsets)
-
 	// update endpoints resource
-	_, err = c.k8sClientSet.Core().Endpoints(ep.Namespace).Update(ep)
-	if err != nil {
-		klog.Errorf("error updating endpoint: %s", err)
+	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		result, getErr := c.k8sClientSet.CoreV1().Endpoints(ep.Namespace).Get(ep.Name, metav1.GetOptions{})
+		if getErr != nil {
+			klog.Errorf("Failed to get latest version of endpoints: %v", getErr)
+			return getErr
+		}
+
+		result.SetOwnerReferences(
+			[]metav1.OwnerReference{
+				*metav1.NewControllerRef(svc, schema.GroupVersionKind{
+					Group:   corev1.SchemeGroupVersion.Group,
+					Version: corev1.SchemeGroupVersion.Version,
+					Kind:    "Service",
+				}),
+			},
+		)
+
+		// repack subsets - NOTE: too naive? additional checks needed?
+		result.Subsets = endpoints.RepackSubsets(subsets)
+
+		_, updateErr := c.k8sClientSet.Core().Endpoints(ep.Namespace).Update(result)
+		return updateErr
+	})
+	if retryErr != nil {
+		klog.Errorf("endpoint update error: %v", err)
 		return err
 	}
 
